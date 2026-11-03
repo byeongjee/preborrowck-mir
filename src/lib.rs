@@ -36,7 +36,7 @@ use rustc_index::IndexVec;
 use rustc_macros::{TyDecodable, TyEncodable};
 use rustc_middle::mir::{Body, Promoted};
 use rustc_middle::ty::{
-    self, EarlyBinder, GenericArgsRef, ParamEnv, Ty, TyCtxt, TypingEnv, TypingMode,
+    self, EarlyBinder, GenericArgsRef, Instance, ParamEnv, Ty, TyCtxt, TypingEnv, TypingMode,
 };
 use rustc_session::cstore::CrateSource;
 use rustc_span::{Span, Symbol};
@@ -149,6 +149,22 @@ pub(crate) fn track_file(tcx: TyCtxt<'_>, path: &Path) {
     if let Some(path) = path.to_str() {
         tcx.sess.file_depinfo.lock().insert(Symbol::intern(path));
     }
+}
+
+// The instances of the function-like bodies recorded with the function of `instance`:
+// the function and its closures with the args of `instance`, not its inline consts.
+pub fn instances_within<'tcx>(
+    tcx: TyCtxt<'tcx>,
+    instance: Instance<'tcx>,
+) -> Result<Vec<Instance<'tcx>>, Error> {
+    let set: &RecordedMir<'tcx> = recorded_mir(tcx, instance.def_id())?;
+    let args: GenericArgsRef<'tcx> = instance.args.truncate_to(tcx, tcx.generics_of(set.root));
+    set.order
+        .iter()
+        .copied()
+        .filter(|&def| tcx.def_kind(def).is_fn_like())
+        .map(|def| Ok(Instance::new_raw(def, set.args_of_body(tcx, def, args)?)))
+        .collect()
 }
 
 // The recorded MIR of the function that contains `def`.
