@@ -62,6 +62,9 @@ pub struct TypeckData<'tcx> {
 pub struct RecordedMir<'tcx> {
     // The function: the typeck root of every body in the group.
     pub root: DefId,
+    // Whether the function is an `unsafe fn` or a body of the group has an `unsafe` block:
+    // the only two places of an operation that needs `unsafe`.
+    pub uses_unsafe: bool,
     pub bodies: FxHashMap<DefId, (Body<'tcx>, IndexVec<Promoted, Body<'tcx>>)>,
     pub typeck: FxHashMap<DefId, TypeckData<'tcx>>,
     // The bodies in the order rustc borrow checks them: a nested body before its parent.

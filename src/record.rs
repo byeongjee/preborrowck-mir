@@ -4,6 +4,8 @@ use std::path::{Path, PathBuf};
 use rustc_data_structures::fx::FxHashMap;
 use rustc_hir::def::DefKind;
 use rustc_hir::def_id::LocalDefId;
+use rustc_hir::intravisit::{self, Visitor};
+use rustc_hir::{Block, BlockCheckMode};
 use rustc_middle::ty::{BoundVariableKind, CanonicalPolyFnSig, Ty, TyCtxt};
 use rustc_session::config::{OutFileName, OutputType};
 use rustc_span::Span;
@@ -48,6 +50,7 @@ pub(crate) fn record<'tcx>(tcx: TyCtxt<'tcx>, root: LocalDefId) {
     }
     let set: RecordedMir<'tcx> = RecordedMir {
         root: root.to_def_id(),
+        uses_unsafe: uses_unsafe(tcx, root, &order),
         bodies,
         typeck,
         order: order.into_iter().map(LocalDefId::to_def_id).collect(),
@@ -59,6 +62,30 @@ pub(crate) fn record<'tcx>(tcx: TyCtxt<'tcx>, root: LocalDefId) {
     RECORDED.with(|sets| {
         sets.borrow_mut().insert(root.to_def_id(), Box::new(set));
     });
+}
+
+fn uses_unsafe(tcx: TyCtxt<'_>, root: LocalDefId, bodies: &[LocalDefId]) -> bool {
+    let is_unsafe_fn: bool = matches!(tcx.def_kind(root), DefKind::Fn | DefKind::AssocFn)
+        && tcx.fn_sig(root).skip_binder().safety().is_unsafe();
+    is_unsafe_fn
+        || bodies.iter().any(|&def| {
+            let mut finder: UnsafeBlockFinder = UnsafeBlockFinder { found: false };
+            finder.visit_body(tcx.hir_body_owned_by(def));
+            finder.found
+        })
+}
+
+struct UnsafeBlockFinder {
+    found: bool,
+}
+
+impl<'v> Visitor<'v> for UnsafeBlockFinder {
+    fn visit_block(&mut self, block: &'v Block<'v>) {
+        if matches!(block.rules, BlockCheckMode::UnsafeBlock(_)) {
+            self.found = true;
+        }
+        intravisit::walk_block(self, block);
+    }
 }
 
 // The MIR file next to a crate artifact (rmeta, rlib, or dylib).
