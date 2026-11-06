@@ -9,11 +9,13 @@ extern crate rustc_index;
 extern crate rustc_interface;
 extern crate rustc_macros;
 extern crate rustc_middle;
+extern crate rustc_mir_dataflow;
 extern crate rustc_serialize;
 extern crate rustc_session;
 extern crate rustc_span;
 
 mod codec;
+mod dead_drops;
 pub mod driver;
 mod error;
 mod facts;

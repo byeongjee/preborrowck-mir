@@ -6,10 +6,12 @@ use rustc_hir::def::DefKind;
 use rustc_hir::def_id::LocalDefId;
 use rustc_hir::intravisit::{self, Visitor};
 use rustc_hir::{Block, BlockCheckMode};
+use rustc_middle::mir::Body;
 use rustc_middle::ty::{BoundVariableKind, CanonicalPolyFnSig, Ty, TyCtxt};
 use rustc_session::config::{OutFileName, OutputType};
 use rustc_span::Span;
 
+use crate::dead_drops::remove_dead_drops;
 use crate::{CrateBodies, Error, RECORDED, RecordedMir, TypeckData, codec};
 
 pub(crate) fn record<'tcx>(tcx: TyCtxt<'tcx>, root: LocalDefId) {
@@ -23,7 +25,9 @@ pub(crate) fn record<'tcx>(tcx: TyCtxt<'tcx>, root: LocalDefId) {
     for &def in &order {
         let kind: DefKind = tcx.def_kind(def);
         let (body, promoted) = tcx.mir_promoted(def);
-        bodies.insert(def.to_def_id(), (body.borrow().clone(), promoted.borrow().clone()));
+        let mut body: Body<'tcx> = body.borrow().clone();
+        remove_dead_drops(tcx, &mut body);
+        bodies.insert(def.to_def_id(), (body, promoted.borrow().clone()));
         let bound_vars: Vec<BoundVariableKind> = match kind {
             DefKind::Fn | DefKind::AssocFn => {
                 tcx.late_bound_vars(tcx.local_def_id_to_hir_id(def)).to_vec()
